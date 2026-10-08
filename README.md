@@ -69,7 +69,7 @@ The mic keeps listening through pauses and turns off after 10 seconds of silence
 
 ## What works and what doesn't
 
-**Works now:** the real conversation, one clarifying question at a time, ranked options with fit scores, the details and next-step cards, voice input in browsers that support it, Full page mode, text size and theme controls, and the guide. The planner reads the same `data/gub.json` the guide shows, so it reasons from the guide's own content.
+**Works now:** a download button that saves the trip plan (ranked options, latest plan and the full conversation) as a text file, made in the browser with no extra API cost; three animated dots while the planner works; the real conversation, one clarifying question at a time, ranked options with fit scores, the details and next-step cards, voice input in browsers that support it, Full page mode, text size and theme controls, and the guide. The planner reads the same `data/gub.json` the guide shows, so it reasons from the guide's own content.
 
 **Optional:** live flight prices (see above).
 
