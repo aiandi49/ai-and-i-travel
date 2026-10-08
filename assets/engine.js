@@ -5,6 +5,11 @@
   var STORE_KEY = "aiandi-planner-v1";
   var HIDDEN_DETAIL_KEYS = ["Next step", "Guide", "Type"];
   var CIRC = 2 * Math.PI * 16;
+  // Conversation-length settings. These must stay within the limits in api/chat.js.
+  var HISTORY_BYTES = 30000;   // api/chat.js rejects requests over 32 KB
+  var HISTORY_MAX = 39;        // api/chat.js accepts up to 40 messages
+  var ASSISTANT_MAX = 12000;   // api/chat.js MAX_ASSISTANT_CHARS
+  var SILENCE_MS = 10000;      // mic turns off after this long without speech
 
   var el = {
     log: document.getElementById("log"),
@@ -100,12 +105,53 @@
   }
 
   // ---------- Rendering ----------
+  // Plain text with https links made clickable, built from text nodes (no HTML parsing).
+  function fillText(node, text, links) {
+    if (!links) { node.textContent = text; return; }
+    var re = /https:\/\/[^\s<>"]+/g;
+    var last = 0, m;
+    while ((m = re.exec(text))) {
+      var url = m[0].replace(/[).,;:!?]+$/, "");
+      if (m.index > last) node.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = url;
+      node.appendChild(a);
+      last = m.index + url.length;
+      re.lastIndex = last;
+    }
+    if (last < text.length) node.appendChild(document.createTextNode(text.slice(last)));
+  }
+
   function addBubble(role, text, extraClass) {
     var div = document.createElement("div");
     div.className = "msg " + role + (extraClass ? " " + extraClass : "");
-    div.textContent = text;
+    fillText(div, text, role === "assistant" && !extraClass);
     el.log.appendChild(div);
     return div;
+  }
+
+  // What gets sent to /api/chat: MATCH lines removed, and the oldest turns dropped when the
+  // conversation would exceed the size limit. The first message (the trip description) is always kept.
+  function buildHistory() {
+    var list = state.messages.map(function (m) {
+      var content = m.role === "assistant" ? (splitReply(m.content).text || "Here are your options.") : m.content;
+      return { role: m.role, content: content.slice(0, m.role === "assistant" ? ASSISTANT_MAX : 4000) };
+    });
+    function size(arr) { return new Blob([JSON.stringify({ messages: arr })]).size; }
+    if (list.length <= HISTORY_MAX && size(list) <= HISTORY_BYTES) return list;
+    var first = list[0];
+    var tail = [];
+    for (var i = list.length - 1; i >= 1; i--) {
+      var next = [list[i]].concat(tail);
+      if (next.length + 1 > HISTORY_MAX || size([first].concat(next)) > HISTORY_BYTES) break;
+      tail = next;
+    }
+    while (tail.length && tail[0].role !== "assistant") tail.shift();
+    if (!tail.length) return [list[list.length - 1]];
+    return [first].concat(tail);
   }
 
   function renderLog() {
@@ -222,8 +268,7 @@
     scrollLog();
     setBusy(true);
 
-    var history = state.messages.slice(-30);
-    while (history.length && history[0].role !== "user") history.shift();
+    var history = buildHistory();
 
     fetch("/api/chat", {
       method: "POST",
@@ -236,7 +281,7 @@
       if (!r.ok || !r.data || typeof r.data.reply !== "string") {
         throw new Error(r.data && typeof r.data.error === "string" ? r.data.error : "The planner couldn't answer just now. Try again in a moment.");
       }
-      state.messages.push({ role: "assistant", content: r.data.reply });
+      state.messages.push({ role: "assistant", content: r.data.reply.slice(0, ASSISTANT_MAX) });
       var parts = splitReply(r.data.reply);
       if (parts.matches.length) {
         state.matches = parts.matches;
@@ -312,17 +357,22 @@
   });
 
   // ---------- Voice input ----------
+  // Keeps listening through pauses and turns off after SILENCE_MS without speech,
+  // or when the mic button is tapped again. Speech fills the box; it never sends.
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var IS_ANDROID = /Android/i.test(navigator.userAgent);
   var rec = null;
   var listening = false;
+  var wantOn = false;
   var base = "";
+  var committed = "";
+  var sessionFinal = "";
+  var lastHeard = 0;
+  var silenceTimer = null;
 
-  function clearMicMsg() { el.micMsg.hidden = true; el.micMsg.textContent = ""; }
-  function showMicMsg(text) { el.micMsg.textContent = text; el.micMsg.hidden = false; }
-
-  function stopListening() {
-    if (rec && listening) { try { rec.stop(); } catch (e) { /* ignore */ } }
-  }
+  function clearMicMsg() { el.micMsg.hidden = true; el.micMsg.textContent = ""; el.micMsg.classList.remove("info"); }
+  function showMicMsg(text) { el.micMsg.textContent = text; el.micMsg.classList.remove("info"); el.micMsg.hidden = false; }
+  function showMicInfo(text) { el.micMsg.textContent = text; el.micMsg.classList.add("info"); el.micMsg.hidden = false; }
 
   function setListening(on) {
     listening = on;
@@ -331,33 +381,91 @@
     el.mic.title = on ? "Stop voice input" : "Speak instead of typing";
   }
 
+  function joinText() {
+    return (base + committed + sessionFinal).replace(/\s+/g, " ").replace(/^ /, "");
+  }
+
+  function finish() {
+    wantOn = false;
+    clearInterval(silenceTimer);
+    silenceTimer = null;
+    setListening(false);
+    if (!el.micMsg.classList.contains("info")) return;
+    clearMicMsg();
+    el.msg.focus();
+  }
+
+  function stopListening() {
+    if (!wantOn && !listening) return;
+    wantOn = false;
+    if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } }
+    finish();
+  }
+
+  function startSession() {
+    sessionFinal = "";
+    rec = new SR();
+    rec.lang = document.documentElement.lang || "en-US";
+    rec.interimResults = true;
+    // Android's recognizer repeats words in continuous mode, so it restarts after each phrase instead.
+    rec.continuous = !IS_ANDROID;
+    rec.onresult = function (e) {
+      lastHeard = Date.now();
+      var fin = "", interim = "";
+      for (var i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) fin += e.results[i][0].transcript + " ";
+        else interim += e.results[i][0].transcript;
+      }
+      sessionFinal = fin;
+      el.msg.value = (joinText() + interim).slice(0, 4000);
+      autoGrow();
+    };
+    rec.onspeechstart = function () { lastHeard = Date.now(); };
+    rec.onerror = function (e) {
+      var code = e && e.error;
+      if (code === "no-speech" || code === "aborted") return; // silence is handled by the 10-second timer
+      wantOn = false;
+      if (code === "not-allowed" || code === "service-not-allowed") showMicMsg("The microphone is blocked. Allow it in your browser's site settings to talk instead of type.");
+      else if (code === "audio-capture") showMicMsg("No microphone was found. Check that one is connected.");
+      else if (code === "network") showMicMsg("Voice input needs an internet connection. Try again or type instead.");
+      else showMicMsg("Voice input stopped. Try again or type instead.");
+    };
+    rec.onend = function () {
+      committed += sessionFinal;
+      sessionFinal = "";
+      el.msg.value = joinText().slice(0, 4000);
+      autoGrow();
+      // The browser ends a session on its own after a pause; keep going until 10 seconds of silence.
+      if (wantOn && Date.now() - lastHeard < SILENCE_MS) {
+        try { startSession(); return; } catch (err) { /* fall through */ }
+      }
+      finish();
+    };
+    rec.start();
+  }
+
   if (!SR) {
     el.mic.hidden = true;
   } else {
     el.mic.addEventListener("click", function () {
-      if (listening) { stopListening(); return; }
+      if (listening || wantOn) { stopListening(); return; }
       clearMicMsg();
-      rec = new SR();
-      rec.lang = document.documentElement.lang || "en-US";
-      rec.interimResults = true;
-      rec.continuous = false;
       base = el.msg.value ? el.msg.value.replace(/\s+$/, "") + " " : "";
-      rec.onresult = function (e) {
-        var said = "";
-        for (var i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
-        el.msg.value = (base + said).slice(0, 4000);
-        autoGrow();
-      };
-      rec.onerror = function (e) {
-        var code = e && e.error;
-        if (code === "not-allowed" || code === "service-not-allowed") showMicMsg("The microphone is blocked. Allow it in your browser's site settings to talk instead of type.");
-        else if (code === "audio-capture") showMicMsg("No microphone was found. Check that one is connected.");
-        else if (code === "no-speech") showMicMsg("Didn't catch that. Tap the mic and try again.");
-        else if (code === "network") showMicMsg("Voice input needs an internet connection. Try again or type instead.");
-        else if (code !== "aborted") showMicMsg("Voice input stopped. Try again or type instead.");
-      };
-      rec.onend = function () { setListening(false); el.msg.focus(); };
-      try { rec.start(); setListening(true); } catch (e) { showMicMsg("Voice input couldn't start. Try again or type instead."); }
+      committed = "";
+      sessionFinal = "";
+      lastHeard = Date.now();
+      wantOn = true;
+      try {
+        startSession();
+        setListening(true);
+        showMicInfo("Listening. Take your time; the mic turns off after 10 seconds of silence.");
+        silenceTimer = setInterval(function () {
+          if (wantOn && Date.now() - lastHeard >= SILENCE_MS) stopListening();
+        }, 500);
+      } catch (e) {
+        wantOn = false;
+        showMicMsg("Voice input couldn't start. Try again or type instead.");
+      }
     });
   }
 
