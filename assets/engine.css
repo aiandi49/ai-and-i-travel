@@ -389,3 +389,7 @@ html[data-theme="light"] .gauge-fill { stroke: #7e22ce; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Mic status while listening (not an error) */
+.mic-msg.info { color: var(--muted); }
+.msg.assistant a { color: var(--accent-text); overflow-wrap: anywhere; }
