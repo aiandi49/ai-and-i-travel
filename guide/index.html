@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-font-size="sm">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI&amp;I Travel — The guide</title>
+<meta name="description" content="Plain-English travel guide for budget family trips: cheapest routes, holiday timing, bags, REAL ID, bereavement fares, rail passes and a Thanksgiving 2026 fare check.">
+<script>(function(){var d=document.documentElement;try{var t=localStorage.getItem('pref-theme');if(t==='light'||t==='dark')d.setAttribute('data-theme',t);var f=localStorage.getItem('pref-font-size');if(f==='sm'||f==='md'||f==='lg'||f==='xl')d.setAttribute('data-font-size',f);}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&amp;family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&amp;display=swap">
+<link rel="stylesheet" href="/assets/guide.css">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the guide</a>
+
+<header class="nav">
+  <div class="nav-row">
+    <a class="brand" href="/" aria-label="AI&amp;I Travel, planner home">
+      <span class="brand-mark" aria-hidden="true">AI</span>
+      <span class="brand-name"><strong>AI&amp;I Travel</strong><span>The guide</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="/">Planner</a>
+      <a href="/guide" aria-current="page">Guide</a>
+    </nav>
+    <div class="prefs">
+      <div class="size-group" role="group" aria-label="Text size">
+        <button type="button" class="size-btn s1" data-size="sm" aria-pressed="true" aria-label="Text size small, selected">A</button>
+        <button type="button" class="size-btn s2" data-size="md" aria-pressed="false" aria-label="Text size medium">A</button>
+        <button type="button" class="size-btn s3" data-size="lg" aria-pressed="false" aria-label="Text size large">A</button>
+        <button type="button" class="size-btn s4" data-size="xl" aria-pressed="false" aria-label="Text size extra large">A</button>
+      </div>
+      <button type="button" class="theme-btn" data-theme-toggle aria-pressed="false" aria-label="Light theme on. Switch to dark theme">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M21 14.5A8.5 8.5 0 0 1 9.5 3a8.5 8.5 0 1 0 11.5 11.5Z"/></svg>
+        <span class="theme-label">Light</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="page-title">
+    <div class="wrap hero-inner">
+      <h1 id="page-title">Travel smarter on a family budget</h1>
+      <p class="dek">What actually saves money and stress when you're flying, riding or meeting family: routes, timing, bags, ID rules and the fares airlines don't advertise.</p>
+      <div class="hero-actions">
+        <a class="btn" href="/">Plan a trip with the planner</a>
+        <a class="btn quiet" href="#thanksgiving-2026">See the Thanksgiving 2026 fare check</a>
+      </div>
+      <p class="notice">Prices in this guide are snapshots with the date they were checked. Fares change daily, so treat them as a benchmark, not a quote.</p>
+    </div>
+  </section>
+
+  <section class="toc" aria-labelledby="toc-title">
+    <div class="wrap">
+      <h2 id="toc-title">In this guide</h2>
+      <ul class="toc-list" id="toc-list"></ul>
+    </div>
+  </section>
+
+  <div id="entries"></div>
+  <p class="load-error" id="load-error" hidden>The guide couldn't load. Refresh the page to try again.</p>
+  <noscript><p class="load-error">This guide needs JavaScript turned on to show its content.</p></noscript>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>AI&amp;I Travel plans trips; it doesn't book them. Confirm every fare on the airline's own site before paying.</p>
+    <p><a href="/">Back to the planner</a></p>
+  </div>
+</footer>
+
+<script src="/assets/prefs.js" defer></script>
+<script src="/assets/guide.js" defer></script>
+</body>
+</html>

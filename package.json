@@ -1,0 +1,8 @@
+{
+  "name": "ai-and-i-travel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI&I Travel: a trip planner engine and a plain-English travel guide.",
+  "type": "module",
+  "engines": { "node": "22.x" }
+}
