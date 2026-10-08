@@ -29,6 +29,7 @@ This folder is already a Git repository on branch `main`, with no commits yet, s
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | Yes | The planner's key. Read only on the server, in `api/chat.js`. |
 | `ANTHROPIC_MODEL` | No | Overrides the model. Default: `claude-sonnet-5-5`, checked against Anthropic's model docs on October 7, 2026. |
+| `LIVE_FLIGHT_SEARCH` | No | Set to `on` to let the planner search live flight prices on Kiwi.com. Leave it unset to keep the planner on guide data only. |
 
 For local development, copy `.env.example` to `.env.local` and fill it in. `.env.local` is ignored by Git.
 
@@ -43,11 +44,36 @@ Project → **Firewall** → **Configure** → **New Rule**:
 
 Then click **Add Rule**, then **Review Changes** and **Publish**. These numbers match the backstop limiter inside `api/chat.js`. If your plan's window field won't accept 600 seconds, use `60` seconds and `2` requests instead.
 
+## Live flight prices (optional)
+
+With `LIVE_FLIGHT_SEARCH` set to `on`, the planner can search real, current flight prices and times while it talks with you. It uses Kiwi.com's public flight-search server through Anthropic's MCP connector (beta header `mcp-client-2025-11-20`). No extra key or account is needed, and nothing is added to the repository.
+
+What to know before turning it on:
+
+- **What's shared:** when the planner searches, the route, dates and passenger counts go from Anthropic to Kiwi.com. Nothing else from the conversation is sent to Kiwi.com.
+- **Only searching:** the planner can use Kiwi.com's search tool and nothing else. It can't book or pay. Results include Kiwi.com booking links you open yourself.
+- **Cost:** search results add text the model reads, so each reply that searches costs more than one that doesn't. Watch the first few days of usage in the Claude Console.
+- **Not covered by zero data retention:** Anthropic's docs say MCP connector data is kept under its standard retention policy.
+- **Terms not confirmed:** Kiwi.com publishes this server for AI assistants and requires no sign-up, but I couldn't find terms that say whether it may be used behind a public website. If the site goes public or gets sold, ask Kiwi.com first.
+- **Trains, buses and rental cars:** there's no live data for these. Amtrak has no public fare API, and bus and rental-car data is only available through partner agreements. The planner gives guidance and tells you where to check.
+
+To turn it off, delete the variable or set it to anything other than `on`, then redeploy.
+
+## Conversation length
+
+Long conversations keep working. The browser always sends your first message (the trip description) plus as many recent turns as fit, and drops the oldest turns in between once the conversation passes about 30 KB. The settings live at the top of `api/chat.js` (`MAX_MESSAGES`, `MAX_USER_CHARS`, `MAX_ASSISTANT_CHARS`, `MAX_BODY_BYTES`, `MAX_TOKENS`) and `assets/engine.js` (`HISTORY_BYTES`, `HISTORY_MAX`, `ASSISTANT_MAX`). Raising them makes each reply cost more, so raise them a little at a time.
+
+## Voice input
+
+The mic keeps listening through pauses and turns off after 10 seconds of silence, or when you tap it again. Speech only fills the text box; you still press Send. Change `SILENCE_MS` in `assets/engine.js` to use a different length.
+
 ## What works and what doesn't
 
 **Works now:** the real conversation, one clarifying question at a time, ranked options with fit scores, the details and next-step cards, voice input in browsers that support it, Full page mode, text size and theme controls, and the guide. The planner reads the same `data/gub.json` the guide shows, so it reasons from the guide's own content.
 
-**Not built (would need a bigger build):** live fare searches, booking or paying, sending emails or texts, user accounts, and saved trip history. The chat lives only in the browser tab and clears when the tab closes.
+**Optional:** live flight prices (see above).
+
+**Not built (would need a bigger build):** live train, bus and rental-car prices, booking or paying, sending emails or texts, user accounts, and saved trip history. The chat lives only in the browser tab and clears when the tab closes.
 
 **Until `ANTHROPIC_API_KEY` is set in Vercel, the chat can't answer.** It shows a plain "isn't set up yet" message instead.
 
