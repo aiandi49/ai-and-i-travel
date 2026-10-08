@@ -272,7 +272,9 @@ export default async function handler(req, res) {
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
     // A turn that uses tools can pause before finishing; continue it (at most twice).
-    const texts = [];
+    // Only text written after the last search is the answer; earlier text is search narration.
+    let texts = [];
+    let allTexts = [];
     for (let round = 0; round < 3; round++) {
       const upstream = await fetch(ANTHROPIC_URL, {
         method: "POST",
@@ -287,12 +289,13 @@ export default async function handler(req, res) {
       const data = await upstream.json();
       const blocks = Array.isArray(data.content) ? data.content : [];
       for (const b of blocks) {
-        if (b && b.type === "text" && typeof b.text === "string") texts.push(b.text);
+        if (b && b.type === "text" && typeof b.text === "string") { texts.push(b.text); allTexts.push(b.text); }
+        else if (b && (b.type === "mcp_tool_use" || b.type === "mcp_tool_result")) texts = [];
       }
       if (data.stop_reason !== "pause_turn") break;
       payload.messages = [...payload.messages, { role: "assistant", content: blocks }];
     }
-    const reply = texts.join("\n").trim();
+    const reply = (texts.join("\n").trim() || allTexts.join("\n").trim());
     if (!reply) {
       return send(res, 200, { reply: "I can't help with that one. Tell me about a trip you're planning and I'll get to work." });
     }
