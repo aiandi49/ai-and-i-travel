@@ -20,6 +20,7 @@
     micMsg: document.getElementById("mic-msg"),
     count: document.getElementById("count-chip"),
     reset: document.getElementById("reset-btn"),
+    download: document.getElementById("download-btn"),
     full: document.getElementById("full-btn"),
     card: document.getElementById("chat-card"),
     slot: document.getElementById("chat-slot"),
@@ -133,6 +134,78 @@
     return div;
   }
 
+  // Three animated dots while the planner works, with a reassuring note on long waits.
+  function addThinking() {
+    var div = document.createElement("div");
+    div.className = "msg assistant pending";
+    var dots = document.createElement("span");
+    dots.className = "dots";
+    dots.setAttribute("aria-hidden", "true");
+    for (var i = 0; i < 3; i++) dots.appendChild(document.createElement("span"));
+    var label = document.createElement("span");
+    label.className = "sr-only";
+    label.textContent = "The planner is working on your trip.";
+    var note = document.createElement("span");
+    note.className = "pending-note";
+    note.hidden = true;
+    div.appendChild(dots);
+    div.appendChild(label);
+    div.appendChild(note);
+    el.log.appendChild(div);
+    var t1 = setTimeout(function () { note.textContent = "Still working. Live fare searches can take up to a minute."; note.hidden = false; scrollLog(); }, 8000);
+    var t2 = setTimeout(function () { note.textContent = "Almost there. Comparing routes and prices."; }, 30000);
+    var removeEl = div.remove.bind(div);
+    div.remove = function () { clearTimeout(t1); clearTimeout(t2); removeEl(); };
+    return div;
+  }
+
+  // ---------- Download ----------
+  // Builds a plain-text trip plan in the browser. No server call and no API cost.
+  function buildPlanText() {
+    var NL = "\r\n";
+    var out = ["AI&I Travel: Trip plan", "Saved " + new Date().toLocaleString(), "",
+      "Prices were checked during this conversation and change all the time.",
+      "Confirm every fare on the airline's own site before paying.", ""];
+    if (state.matches.length) {
+      out.push("RANKED OPTIONS", "");
+      state.matches.forEach(function (m, i) {
+        out.push((i + 1) + ". " + m.title + " (fit " + m.score + "/100)");
+        if (m.why) out.push("   Why: " + m.why);
+        Object.keys(m.details).forEach(function (k) {
+          if (k === "Guide") return;
+          out.push("   " + k + ": " + m.details[k]);
+        });
+        out.push("");
+      });
+    }
+    var lastPlan = "";
+    for (var i = state.messages.length - 1; i >= 0; i--) {
+      if (state.messages[i].role === "assistant") { lastPlan = splitReply(state.messages[i].content).text; break; }
+    }
+    if (lastPlan) out.push("LATEST PLAN", "", lastPlan, "");
+    out.push("FULL CONVERSATION", "");
+    state.messages.forEach(function (m) {
+      var text = m.role === "assistant" ? splitReply(m.content).text : m.content;
+      out.push((m.role === "user" ? "You: " : "Planner: ") + text, "");
+    });
+    return "\uFEFF" + out.join("\n").replace(/\r?\n/g, NL);
+  }
+
+  function downloadPlan() {
+    if (!state.messages.some(function (m) { return m.role === "assistant"; })) return;
+    var d = new Date();
+    var stamp = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    var blob = new Blob([buildPlanText()], { type: "text/plain;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "ai-and-i-travel-plan-" + stamp + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
   // What gets sent to /api/chat: MATCH lines removed, and the oldest turns dropped when the
   // conversation would exceed the size limit. The first message (the trip description) is always kept.
   function buildHistory() {
@@ -169,6 +242,7 @@
   function updateCount() {
     var n = state.messages.length;
     el.count.textContent = n === 0 ? "No messages yet" : n === 1 ? "1 message" : n + " messages";
+    el.download.disabled = !state.messages.some(function (m) { return m.role === "assistant"; });
   }
 
   function selectedMatch() {
@@ -240,12 +314,14 @@
   function autoGrow() {
     el.msg.style.height = "auto";
     el.msg.style.height = (el.msg.scrollHeight + 2) + "px";
+    // Allow scrolling only when the text is longer than the box can show (max-height reached).
+    el.msg.style.overflowY = el.msg.scrollHeight > el.msg.clientHeight + 1 ? "auto" : "hidden";
   }
 
   function setBusy(on) {
     busy = on;
     el.send.disabled = on;
-    el.send.textContent = on ? "Planning…" : "Send";
+    el.send.setAttribute("aria-busy", on ? "true" : "false");
   }
 
   function send() {
@@ -264,7 +340,7 @@
     el.empty.hidden = true;
     addBubble("user", text);
     updateCount();
-    var pending = addBubble("assistant", "Working on it…", "pending");
+    var pending = addThinking();
     scrollLog();
     setBusy(true);
 
@@ -313,6 +389,7 @@
   }
 
   el.send.addEventListener("click", send);
+  el.download.addEventListener("click", downloadPlan);
   el.msg.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
